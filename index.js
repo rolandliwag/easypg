@@ -1,77 +1,71 @@
-var pg = require('pg'),
-    async = require('async'),
-    passError = require('passerror');
+const Promise = require('bluebird');
+const { Pool, Client } = require('pg');
 
-function EasyPG(config, suppliedPg) {
-    var connString;
+class EasyPG {
+    constructor(config, DefaultPool = Pool) {
+        let connString;
 
-    if (typeof config === 'string') {
-        connString = config;
-    } else {
-        connString = 'postgres://' + config.user + ':' + config.password + '@' +
-            config.host + ':' + config.port + '/' + config.database;
-    }
+        if (typeof config === 'string') {
+            connString = config;
+        } else {
+            connString = 'postgres://' + config.user + ':' + config.password + '@' +
+                config.host + ':' + config.port + '/' + config.database;
+        }
 
-    if (suppliedPg) {
-        pg = suppliedPg;
+        this.pool = new DefaultPool(connString);
     }
 
     /**
      * @public
-     * @param {Mixed} query A query config object or query string.
-     * @param {Function} cb Callback function executed after the
-     * query returns. Should have signature function (err, result).
+     * @param {Object} query A query config object
+     * @param {String} query.text
+     * @param {Array} query.params
      */
-    this.query = function (query, cb) {
-        pg.connect(connString, function (err, client, done) {
-            if (err) {
-                return cb(err);
-            }
+    query({ text, params }) {
+        return this.pool.query(text, params);
+    }
 
-            client.query(query, function (err, result) {
-                done();
+    /**
+     * @public
+     * @param {Array} queries An array of query config objects
+     */
+    runTransaction(queries) {
+        const getAborter = (client, destroy) => (err) => {
+            return client.release(destroy)
+            .then(() => {
+                throw new Error(err);
+            });
+        }
 
-                cb(err, result);
+        return this.pool.connect()
+        .then((client) => {
+            const abort = getAborter(client);
+            const destroy = getAborter(client, true);
+
+            return client.query('BEGIN')
+            .catch(abort)
+            .then(() => {
+                return Promise.all(queries.map(({ text, params }) => {
+                    return client.query(text, params);
+                }))
+                .catch((err) => {
+                    client.query('ROLLBACK')
+                    .catch(destroy);
+                });
+            })
+            .then((results) => {
+                return client.query('COMMIT')
+                .then(() => {
+                    return results;
+                })
+                .catch(destroy);
             });
         });
-    };
+    }
 
-    this.runTransaction = function (queries, cb) {
-        pg.connect(connString, passError(cb, function (client, done) {
-            client.query('BEGIN', function (err, result) {
-                if (err) {
-                    done();
-                    return cb(err);
-                }
-
-                async.mapSeries(queries, function (query, next) {
-                    client.query(query, next);
-                }, function (err, results) {
-                    if (err) {
-                        client.query('ROLLBACK', function (rollbackErr) {
-                            if (rollbackErr) {
-                                done(true);
-                                return cb('Could not rollback');
-                            }
-
-                            done();
-                            cb(err);
-                        });
-                    }
-
-                    client.query('COMMIT', function (commitErr) {
-                        if (commitErr) {
-                            done(true);
-                            return cb('Could not commit');
-                        }
-
-                        done();
-                        cb(null, results);
-                    });
-                });
-            });
-        }));
-    };
+    end() {
+        return this.pool.end();
+    }
 }
 
 module.exports = EasyPG;
