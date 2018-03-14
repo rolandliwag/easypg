@@ -3,16 +3,16 @@ const { Pool, Client } = require('pg');
 
 class EasyPG {
     constructor(config, DefaultPool = Pool) {
-        let connString;
+        let connectionString;
 
         if (typeof config === 'string') {
-            connString = config;
+            connectionString = config;
         } else {
-            connString = 'postgres://' + config.user + ':' + config.password + '@' +
+            connectionString = 'postgres://' + config.user + ':' + config.password + '@' +
                 config.host + ':' + config.port + '/' + config.database;
         }
 
-        this.pool = new DefaultPool(connString);
+        this.pool = new DefaultPool({ connectionString });
     }
 
     /**
