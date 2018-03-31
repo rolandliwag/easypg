@@ -73,7 +73,7 @@ class EasyPG {
             .catch(abort)
             .then(() => {
                 return Promise.each(queries, ({ text, params, handler }) => {
-                    return client.query(text, params)
+                    return client.query(text, Array.isArray(params) ? params : params())
                     .then(handler);
                 });
             })

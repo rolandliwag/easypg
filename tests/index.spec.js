@@ -78,6 +78,9 @@ describe('easypg', () => {
             .then(() => {
                 expect(connect, 'was called');
                 expect(client.query, 'was called');
+                expect(client.query, 'to have a call satisfying', {
+                    args: ['', expect.it('to be an array')] 
+                });
                 expect(client.release, 'was called once');
                 expect(client.release, 'was called with', undefined);
             });
@@ -168,6 +171,9 @@ describe('easypg', () => {
             .then(() => {
                 expect(connect, 'was called');
                 expect(client.query, 'was called');
+                expect(client.query, 'to have a call satisfying', {
+                    args: ['', expect.it('to be an array')] 
+                });
                 expect(client.release, 'was called once');
                 expect(client.release, 'was called with', undefined);
                 expect(firstHandler, 'was called once');
