@@ -1,6 +1,14 @@
 const Promise = require('bluebird');
 const { Pool, Client } = require('pg');
 
+const _getAborter = (client, destroy) => 
+    (err) => {
+        return client.release(destroy)
+        .then(() => {
+            throw new Error(err);
+        });
+    };
+
 class EasyPG {
     constructor(config, DefaultPool = Pool) {
         let connectionString;
@@ -19,10 +27,10 @@ class EasyPG {
      * @public
      * @param {Object} query A query config object
      * @param {String} query.text
-     * @param {Array} query.params
+     * @param {Mixed} query.params Array of parameters or function returning array of parameters
      */
     query({ text, params }) {
-        return this.pool.query(text, params);
+        return this.pool.query(text, Array.isArray(params) ? params : params());
     }
 
     /**
@@ -30,17 +38,10 @@ class EasyPG {
      * @param {Array} queries An array of query config objects
      */
     runTransaction(queries) {
-        const getAborter = (client, destroy) => (err) => {
-            return client.release(destroy)
-            .then(() => {
-                throw new Error(err);
-            });
-        }
-
         return this.pool.connect()
         .then((client) => {
-            const abort = getAborter(client);
-            const destroy = getAborter(client, true);
+            const abort = _getAborter(client);
+            const destroy = _getAborter(client, true);
 
             return client.query('BEGIN')
             .catch(abort)
@@ -49,15 +50,46 @@ class EasyPG {
                     return client.query(text, params);
                 }))
                 .catch((err) => {
-                    client.query('ROLLBACK')
+                    return client.query('ROLLBACK')
                     .catch(destroy);
                 });
             })
             .then((results) => {
                 return client.query('COMMIT')
-                .then(() => {
-                    return results;
+                .then(() => client.release())
+                .then(() => results)
+                .catch(destroy);
+            });
+        });
+    }
+
+    runQueriesInTransaction(queries) {
+        return this.pool.connect()
+        .then((client) => {
+            const abort = _getAborter(client);
+            const destroy = _getAborter(client, true);
+
+            return client.query('BEGIN')
+            .catch(abort)
+            .then(() => {
+                return Promise.each(queries, ({ text, params, handler }) => {
+                    return client.query(text, params)
+                    .then(handler);
+                });
+            })
+            .catch((err) => {
+                return client.query('ROLLBACK')
+                .catch(() => {
+                    destroy();
                 })
+                .then(() => {
+                    throw err;
+                });
+            })
+            .then((results) => {
+                return client.query('COMMIT')
+                .then(() => client.release())
+                .then(() => results)
                 .catch(destroy);
             });
         });

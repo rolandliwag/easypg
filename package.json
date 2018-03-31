@@ -22,7 +22,8 @@
   },
   "homepage": "https://github.com/rolandliwag/easypg",
   "dependencies": {
-    "bluebird": "^3.5.1"
+    "bluebird": "^3.5.1",
+    "pg": "^6.4.2"
   },
   "peerDependencies": {
     "pg": "^6.0.0"

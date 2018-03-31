@@ -40,7 +40,7 @@ describe('easypg', () => {
                 text: 'SELECT',
                 params: [1]
             }
-            query.returns(Promise.reject());
+            query.rejects();
             
             return expect(dal.query(queryConfig), 'to be rejected')
             .then(() => {
@@ -52,18 +52,108 @@ describe('easypg', () => {
     context('runTransaction()', () => {
         it('should call fakePool.connect and reject on error', () => {
             const queryConfig = {};
-            connect.returns(Promise.reject());
+            connect.resolves()
 
             return expect(dal.runTransaction([queryConfig]), 'to be rejected')
             .then(() => {
                 expect(connect, 'was called');
             })
         });
+
+        it('should rollback if error occurs', () => {
+            const client = {
+                query: sinon.stub().rejects(),
+                release: sinon.stub().resolves()
+            };
+            const queries = [{
+                text: '',
+                params: []
+            }, {
+                text: '',
+                params: []
+            }];
+            connect.resolves();
+
+            return expect(dal.runQueriesInTransaction(queries), 'to be rejected')
+            .catch(() => {
+                expect(connect, 'was called');
+                expect(client.query, 'was called with', 'ROLLBACK');
+                expect(client.release, 'was called once');
+                expect(client.release, 'was not called with', true);
+            });
+        });
+    });
+
+    context('runQueriesInTransaction()', () => {
+        it('should call fakePool.connect and reject on error', () => {
+            const queryConfig = {};
+            connect.rejects();
+
+            return expect(dal.runQueriesInTransaction([queryConfig]), 'to be rejected')
+            .then(() => {
+                expect(connect, 'was called');
+            })
+        });
+
+        it('should call fakePool.query with text and params', () => {
+            const firstHandler = sinon.stub();
+            const secondHandler = sinon.stub();
+            const client = {
+                query: sinon.stub().resolves(),
+                release: sinon.stub().resolves()
+            };
+            const queries = [{
+                text: '',
+                params: [],
+                handler: firstHandler
+            }, {
+                text: '',
+                params: [],
+                handler: secondHandler
+            }];
+            connect.resolves(client);
+
+            return expect(dal.runQueriesInTransaction(queries), 'to be fulfilled')
+            .then(() => {
+                expect(connect, 'was called');
+                expect(client.release, 'was called once');
+                expect(client.release, 'was called with', undefined);
+                expect(firstHandler, 'was called once');
+                expect(secondHandler, 'was called once');
+            })
+        });
+
+        it('should rollback if error occurs', () => {
+            const firstHandler = sinon.stub().rejects();
+            const secondHandler = sinon.stub();
+            const client = {
+                query: sinon.stub().resolves(),
+                release: sinon.stub().resolves()
+            };
+            const queries = [{
+                text: '',
+                params: [],
+                handler: firstHandler
+            }, {
+                text: '',
+                params: [],
+                handler: secondHandler
+            }];
+            connect.resolves(client);
+
+            return expect(dal.runQueriesInTransaction(queries), 'to be rejected')
+            .catch(() => {
+                expect(connect, 'was called');
+                expect(client.query, 'was called with', 'ROLLBACK');
+                expect(firstHandler, 'was called once');
+                expect(secondHandler, 'was not called');
+            });
+        });
     });
 
     context('end()', () => {
         it('should call fakePool.end', () => {
-            end.returns(Promise.resolve());
+            end.resolves();
             return expect(dal.end(), 'to be fulfilled');
         })
     });
