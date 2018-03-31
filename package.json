@@ -1,6 +1,6 @@
 {
   "name": "@rolandliwag/easypg",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Simple convenience methods utilizing node-postgres",
   "main": "index.js",
   "scripts": {
