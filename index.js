@@ -47,7 +47,7 @@ class EasyPG {
             .catch(abort)
             .then(() => {
                 return Promise.all(queries.map(({ text, params }) => {
-                    return client.query(text, params);
+                    return client.query(text, Array.isArray(params) ? params : params());
                 }))
                 .catch((err) => {
                     return client.query('ROLLBACK')

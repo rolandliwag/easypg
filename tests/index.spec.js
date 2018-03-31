@@ -57,7 +57,30 @@ describe('easypg', () => {
             return expect(dal.runTransaction([queryConfig]), 'to be rejected')
             .then(() => {
                 expect(connect, 'was called');
-            })
+            });
+        });
+
+        it('should accept a function as params', () => {
+            const client = {
+                query: sinon.stub().resolves(),
+                release: sinon.stub().resolves()
+            };
+            const queries = [{
+                text: '',
+                params: () => ([])
+            }, {
+                text: '',
+                params: () => ([])
+            }];
+            connect.resolves(client);
+
+            return expect(dal.runQueriesInTransaction(queries), 'to be fulfilled')
+            .then(() => {
+                expect(connect, 'was called');
+                expect(client.query, 'was called');
+                expect(client.release, 'was called once');
+                expect(client.release, 'was called with', undefined);
+            });
         });
 
         it('should rollback if error occurs', () => {
@@ -120,7 +143,36 @@ describe('easypg', () => {
                 expect(client.release, 'was called with', undefined);
                 expect(firstHandler, 'was called once');
                 expect(secondHandler, 'was called once');
-            })
+            });
+        });
+
+        it('should accept a function as params', () => {
+            const firstHandler = sinon.stub();
+            const secondHandler = sinon.stub();
+            const client = {
+                query: sinon.stub().resolves(),
+                release: sinon.stub().resolves()
+            };
+            const queries = [{
+                text: '',
+                params: () => ([]),
+                handler: firstHandler
+            }, {
+                text: '',
+                params: () => ([]),
+                handler: secondHandler
+            }];
+            connect.resolves(client);
+
+            return expect(dal.runQueriesInTransaction(queries), 'to be fulfilled')
+            .then(() => {
+                expect(connect, 'was called');
+                expect(client.query, 'was called');
+                expect(client.release, 'was called once');
+                expect(client.release, 'was called with', undefined);
+                expect(firstHandler, 'was called once');
+                expect(secondHandler, 'was called once');
+            });
         });
 
         it('should rollback if error occurs', () => {
