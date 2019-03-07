@@ -1,4 +1,4 @@
-const EasyPg = require('../index');
+const EasyPg = require('../src/index');
 const unexpected = require('unexpected');
 const sinon = require('sinon');
 const unexpectedSinon = require('unexpected-sinon');
@@ -28,10 +28,10 @@ describe('easypg', () => {
                 params: [1]
             }
             query.returns(Promise.resolve());
-            
+
             return expect(dal.query(queryConfig), 'to be fulfilled')
             .then(() => {
-                expect(query, 'was called with', queryConfig.text, queryConfig.params);
+                expect(query, 'to have a call satisfying', [queryConfig.text, queryConfig.params]);
             })
         });
 
@@ -41,10 +41,10 @@ describe('easypg', () => {
                 params: [1]
             }
             query.rejects();
-            
+
             return expect(dal.query(queryConfig), 'to be rejected')
             .then(() => {
-                expect(query, 'was called with', queryConfig.text, queryConfig.params);
+                expect(query, 'to have a call satisfying', [queryConfig.text, queryConfig.params]);
             })
         });
     });
@@ -52,70 +52,9 @@ describe('easypg', () => {
     context('runTransaction()', () => {
         it('should call fakePool.connect and reject on error', () => {
             const queryConfig = {};
-            connect.resolves()
-
-            return expect(dal.runTransaction([queryConfig]), 'to be rejected')
-            .then(() => {
-                expect(connect, 'was called');
-            });
-        });
-
-        it('should accept a function as params', () => {
-            const client = {
-                query: sinon.stub().resolves(),
-                release: sinon.stub().resolves()
-            };
-            const queries = [{
-                text: '',
-                params: () => ([])
-            }, {
-                text: '',
-                params: () => ([])
-            }];
-            connect.resolves(client);
-
-            return expect(dal.runQueriesInTransaction(queries), 'to be fulfilled')
-            .then(() => {
-                expect(connect, 'was called');
-                expect(client.query, 'was called');
-                expect(client.query, 'to have a call satisfying', {
-                    args: ['', expect.it('to be an array')] 
-                });
-                expect(client.release, 'was called once');
-                expect(client.release, 'was called with', undefined);
-            });
-        });
-
-        it('should rollback if error occurs', () => {
-            const client = {
-                query: sinon.stub().rejects(),
-                release: sinon.stub().resolves()
-            };
-            const queries = [{
-                text: '',
-                params: []
-            }, {
-                text: '',
-                params: []
-            }];
-            connect.resolves();
-
-            return expect(dal.runQueriesInTransaction(queries), 'to be rejected')
-            .catch(() => {
-                expect(connect, 'was called');
-                expect(client.query, 'was called with', 'ROLLBACK');
-                expect(client.release, 'was called once');
-                expect(client.release, 'was not called with', true);
-            });
-        });
-    });
-
-    context('runQueriesInTransaction()', () => {
-        it('should call fakePool.connect and reject on error', () => {
-            const queryConfig = {};
             connect.rejects();
 
-            return expect(dal.runQueriesInTransaction([queryConfig]), 'to be rejected')
+            return expect(dal.runTransaction([queryConfig]), 'to be rejected')
             .then(() => {
                 expect(connect, 'was called');
             })
@@ -139,11 +78,11 @@ describe('easypg', () => {
             }];
             connect.resolves(client);
 
-            return expect(dal.runQueriesInTransaction(queries), 'to be fulfilled')
+            return expect(dal.runTransaction(queries), 'to be fulfilled')
             .then(() => {
                 expect(connect, 'was called');
                 expect(client.release, 'was called once');
-                expect(client.release, 'was called with', undefined);
+                expect(client.release, 'to have a call satisfying', []);
                 expect(firstHandler, 'was called once');
                 expect(secondHandler, 'was called once');
             });
@@ -167,17 +106,46 @@ describe('easypg', () => {
             }];
             connect.resolves(client);
 
-            return expect(dal.runQueriesInTransaction(queries), 'to be fulfilled')
+            return expect(dal.runTransaction(queries), 'to be fulfilled')
             .then(() => {
                 expect(connect, 'was called');
                 expect(client.query, 'was called');
                 expect(client.query, 'to have a call satisfying', {
-                    args: ['', expect.it('to be an array')] 
+                    args: ['', expect.it('to be an array')]
                 });
                 expect(client.release, 'was called once');
-                expect(client.release, 'was called with', undefined);
+                expect(client.release, 'to have a call satisfying', []);
                 expect(firstHandler, 'was called once');
                 expect(secondHandler, 'was called once');
+            });
+        });
+
+        it('should not require a handler function', () => {
+            const firstHandler = sinon.stub();
+            const client = {
+                query: sinon.stub().resolves(),
+                release: sinon.stub().resolves()
+            };
+            const queries = [{
+                text: '',
+                params: () => ([]),
+                handler: firstHandler
+            }, {
+                text: '',
+                params: () => ([])
+            }];
+            connect.resolves(client);
+
+            return expect(dal.runTransaction(queries), 'to be fulfilled')
+            .then(() => {
+                expect(connect, 'was called');
+                expect(client.query, 'was called');
+                expect(client.query, 'to have a call satisfying', {
+                    args: ['', expect.it('to be an array')]
+                });
+                expect(client.release, 'was called once');
+                expect(client.release, 'to have a call satisfying', []);
+                expect(firstHandler, 'was called once');
             });
         });
 
@@ -199,12 +167,41 @@ describe('easypg', () => {
             }];
             connect.resolves(client);
 
-            return expect(dal.runQueriesInTransaction(queries), 'to be rejected')
+            return expect(dal.runTransaction(queries), 'to be rejected')
             .catch(() => {
                 expect(connect, 'was called');
-                expect(client.query, 'was called with', 'ROLLBACK');
+                expect(client.query, 'to have a call satisfying', ['ROLLBACK']);
                 expect(firstHandler, 'was called once');
                 expect(secondHandler, 'was not called');
+                expect(client.release, 'to have a call satisfying', []);
+            });
+        });
+
+        it('should release the client if rollback fails', () => {
+            const client = {
+                query: sinon.stub().callsFake(query => {
+                    if (query === 'BEGIN') {
+                        return Promise.resolve();
+                    } else {
+                        return Promise.reject(new Error());
+                    }
+                }),
+                release: sinon.stub().resolves()
+            };
+            const queries = [{
+                text: '',
+                params: []
+            }, {
+                text: '',
+                params: []
+            }];
+            connect.resolves(client);
+
+            return expect(dal.runTransaction(queries), 'to be rejected')
+            .catch(() => {
+                expect(connect, 'was called');
+                expect(client.query, 'to have a call satisfying', ['ROLLBACK']);
+                expect(client.release, 'to have a call satisfying', [true]);
             });
         });
     });
