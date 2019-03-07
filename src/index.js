@@ -63,14 +63,15 @@ class EasyPG {
             return client.query('BEGIN')
             .catch(abort)
             .then(() => {
-                return Promise.all(queries.map(({ text, params, handler }) => {
-                    return client.query(text, Array.isArray(params) ? params : params())
-                    .then(result => {
-                        if (handler && typeof handler === 'function') {
-                            return handler(result);
-                        }
-                    })
-                }))
+                return queries.reduce((lastPromise, { text, params, handler }) => {
+                    return lastPromise.then(() =>
+                        client.query(text, Array.isArray(params) ? params : params())
+                        .then(result => {
+                            if (handler && typeof handler === 'function') {
+                                return handler(result);
+                            }
+                        }));
+                }, Promise.resolve())
                 .catch((err) => {
                     return client.query('ROLLBACK')
                     .catch(destroy)

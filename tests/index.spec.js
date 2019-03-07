@@ -4,7 +4,8 @@ const sinon = require('sinon');
 const unexpectedSinon = require('unexpected-sinon');
 
 const expect = unexpected.clone();
-expect.use(require('unexpected-sinon'));
+
+expect.use(unexpectedSinon);
 
 describe('easypg', () => {
     const connect = sinon.stub();
@@ -202,6 +203,48 @@ describe('easypg', () => {
                 expect(connect, 'was called');
                 expect(client.query, 'to have a call satisfying', ['ROLLBACK']);
                 expect(client.release, 'to have a call satisfying', [true]);
+            });
+        });
+
+        it('should call handlers and params in order of query objects', () => {
+            let firstParamCallTime;
+            let firstHandlerCallTime;
+            let secondParamCallTime;
+            let secondHandlerCallTime;
+
+            const client = {
+                query: sinon.stub().resolves(),
+                release: sinon.stub().resolves()
+            };
+            const queries = [{
+                text: '',
+                params: () => {
+                    firstParamCallTime = process.hrtime().toString();
+                    return [];
+                },
+                handler: () => {
+                    firstHandlerCallTime = process.hrtime().toString();
+                    return new Promise(resolve => {
+                        setTimeout(resolve, 100);
+                    })
+                }
+            }, {
+                text: '',
+                params: () => {
+                    secondParamCallTime = process.hrtime().toString();
+                    return [];
+                },
+                handler: () => {
+                    secondHandlerCallTime = process.hrtime().toString();
+                }
+            }];
+            connect.resolves(client);
+
+            return expect(dal.runTransaction(queries), 'to be fulfilled')
+            .then(() => {
+                expect(firstParamCallTime, 'to be less than', firstHandlerCallTime);
+                expect(firstHandlerCallTime, 'to be less than', secondParamCallTime);
+                expect(secondParamCallTime, 'to be less than', secondHandlerCallTime);
             });
         });
     });
